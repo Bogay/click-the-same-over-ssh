@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/76creates/stickers/flexbox"
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
@@ -70,8 +72,6 @@ func main() {
 	}
 }
 
-// You can write your own custom bubbletea middleware that wraps tea.Program.
-// Make sure you set the program input and output to ssh.Session.
 func myCustomBubbleteaMiddleware() wish.Middleware {
 	newProg := func(m tea.Model, opts ...tea.ProgramOption) *tea.Program {
 		p := tea.NewProgram(m, opts...)
@@ -104,24 +104,39 @@ func myCustomBubbleteaMiddleware() wish.Middleware {
 			hoveredCol:    0,
 			timer:         timer.NewWithInterval(gameDuration, time.Millisecond),
 			timerProgress: progress.New(progress.WithDefaultGradient(), progress.WithoutPercentage()),
+			keymap: keymap{
+				up:     key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up")),
+				down:   key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down")),
+				left:   key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "left")),
+				right:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "right")),
+				choose: key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "(un)select")),
+			},
+			help: help.New(),
 		}
 		m.table.table[0][0].isHovered = true
 
+		flexRows := make([]*flexbox.Row, 0)
 		styleScoreHeader := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
 		row0 := m.flexBox.NewRow().AddCells(
 			flexbox.NewCell(30, 1).SetStyle(styleScoreHeader),
 		)
+		flexRows = append(flexRows, row0)
 
 		styleMathTable := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
 		row1 := m.flexBox.NewRow().AddCells(
 			flexbox.NewCell(4, 6).SetStyle(styleMathTable),
+			flexbox.NewCell(2, 6).SetStyle(styleMathTable),
 			flexbox.NewCell(4, 6).SetStyle(styleMathTable),
 		)
+		flexRows = append(flexRows, row1)
 
-		row2 := m.flexBox.NewRow().AddCells(
-			flexbox.NewCell(30, 3),
+		styleBottomRow := lipgloss.NewStyle().Padding(1).AlignVertical(lipgloss.Bottom)
+		row2 := m.flexBox.NewRow().SetStyle(styleBottomRow).AddCells(
+			flexbox.NewCell(30, 2),
 		)
-		m.flexBox.AddRows([]*flexbox.Row{row0, row1, row2})
+		flexRows = append(flexRows, row2)
+
+		m.flexBox.AddRows(flexRows)
 
 		return newProg(m, append(bubbletea.MakeOptions(s), tea.WithAltScreen())...)
 	}
@@ -217,6 +232,14 @@ func (t *mathTable) Render() string {
 	return lipgloss.JoinVertical(lipgloss.Bottom, rows...)
 }
 
+type keymap struct {
+	up     key.Binding
+	down   key.Binding
+	left   key.Binding
+	right  key.Binding
+	choose key.Binding
+}
+
 type model struct {
 	flexBox *flexbox.FlexBox
 
@@ -226,7 +249,14 @@ type model struct {
 
 	timer         timer.Model
 	timerProgress progress.Model
+
+	keymap keymap
+	help   help.Model
 }
+
+// func newModel(keymap) Model {
+
+// }
 
 func (t *model) CursorDown() {
 	t.table.table[t.hoveredRow][t.hoveredCol].isHovered = false
@@ -284,7 +314,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p := float64(m.timer.Timeout.Microseconds()) / float64(gameDuration.Microseconds())
 		cmd := m.timerProgress.SetPercent(p)
 		return m, tea.Batch(tickCmd(), cmd)
-	// FrameMsg is sent when the progress bar wants to animate itself
 	case progress.FrameMsg:
 		progressModel, cmd := m.timerProgress.Update(msg)
 		m.timerProgress = progressModel.(progress.Model)
@@ -301,14 +330,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "down":
-			m.CursorDown()
-		case "up":
-			m.CursorUp()
-		case "left":
-			m.CursorLeft()
-		case "right":
-			m.CursorRight()
 		case tea.KeySpace.String():
 			m.Toggle()
 		// case "+":
@@ -316,7 +337,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
+
+		switch {
+		case key.Matches(msg, m.keymap.up):
+			m.CursorUp()
+		case key.Matches(msg, m.keymap.down):
+			m.CursorDown()
+		case key.Matches(msg, m.keymap.left):
+			m.CursorLeft()
+		case key.Matches(msg, m.keymap.right):
+			m.CursorRight()
+		}
 	}
+
 	return m, nil
 }
 
@@ -328,9 +361,23 @@ func (m model) View() string {
 
 	row1 := m.flexBox.GetRow(1)
 	tableCell := row1.GetCell(0)
+	help := m.help.FullHelpView([][]key.Binding{
+		{
+			m.keymap.up,
+			m.keymap.down,
+			m.keymap.left,
+			m.keymap.right,
+		},
+		{m.keymap.choose},
+	})
+	tableCell.SetContent(lipgloss.JoinVertical(
+		lipgloss.Top,
+		m.table.Render(),
+	))
+	tableCell = row1.GetCell(2)
 	tableCell.SetContent(m.table.Render())
-	tableCell = row1.GetCell(1)
-	tableCell.SetContent(m.table.Render())
+
+	m.flexBox.GetRow(2).GetCell(0).SetContent(help)
 
 	return m.flexBox.Render()
 }
