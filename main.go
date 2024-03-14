@@ -84,59 +84,13 @@ func myCustomBubbleteaMiddleware() wish.Middleware {
 			return nil
 		}
 
-		mathRows := make([][]mathBlock, 0)
-		for i := 0; i < 4; i++ {
-			r := make([]mathBlock, 0)
-			for j := 0; j < 3; j++ {
-				r = append(r, newMathBlock(mathFormula{
-					lhs: 1,
-					rhs: 1,
-					op:  "+",
-				}))
-			}
-			mathRows = append(mathRows, r)
-		}
-
-		m := model{
-			flexBox:       flexbox.New(0, 0),
-			table:         newMathTable(mathRows),
-			hoveredRow:    0,
-			hoveredCol:    0,
-			timer:         timer.NewWithInterval(gameDuration, time.Millisecond),
-			timerProgress: progress.New(progress.WithDefaultGradient(), progress.WithoutPercentage()),
-			keymap: keymap{
-				up:     key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up")),
-				down:   key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down")),
-				left:   key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "left")),
-				right:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "right")),
-				choose: key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "(un)select")),
-			},
-			help: help.New(),
-		}
-		m.table.table[0][0].isHovered = true
-
-		flexRows := make([]*flexbox.Row, 0)
-		styleScoreHeader := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
-		row0 := m.flexBox.NewRow().AddCells(
-			flexbox.NewCell(30, 1).SetStyle(styleScoreHeader),
-		)
-		flexRows = append(flexRows, row0)
-
-		styleMathTable := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
-		row1 := m.flexBox.NewRow().AddCells(
-			flexbox.NewCell(4, 6).SetStyle(styleMathTable),
-			flexbox.NewCell(2, 6).SetStyle(styleMathTable),
-			flexbox.NewCell(4, 6).SetStyle(styleMathTable),
-		)
-		flexRows = append(flexRows, row1)
-
-		styleBottomRow := lipgloss.NewStyle().Padding(1).AlignVertical(lipgloss.Bottom)
-		row2 := m.flexBox.NewRow().SetStyle(styleBottomRow).AddCells(
-			flexbox.NewCell(30, 2),
-		)
-		flexRows = append(flexRows, row2)
-
-		m.flexBox.AddRows(flexRows)
+		m := newModel(keymap{
+			up:     key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up")),
+			down:   key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down")),
+			left:   key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "left")),
+			right:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "right")),
+			choose: key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "(un)select")),
+		})
 
 		return newProg(m, append(bubbletea.MakeOptions(s), tea.WithAltScreen())...)
 	}
@@ -201,15 +155,21 @@ func (b *mathBlock) Toggle() {
 }
 
 type mathTable struct {
-	table [][]mathBlock
-	score int
+	table      [][]mathBlock
+	score      int
+	hoveredRow int
+	hoveredCol int
 }
 
 func newMathTable(table [][]mathBlock) mathTable {
-	return mathTable{
-		table: table,
-		score: 0,
+	t := mathTable{
+		table:      table,
+		score:      0,
+		hoveredRow: 0,
+		hoveredCol: 0,
 	}
+	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
+	return t
 }
 
 func (t *mathTable) Render() string {
@@ -232,6 +192,34 @@ func (t *mathTable) Render() string {
 	return lipgloss.JoinVertical(lipgloss.Bottom, rows...)
 }
 
+func (t *mathTable) CursorDown() {
+	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
+	t.hoveredRow = (t.hoveredRow + 1) % len(t.table)
+	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
+}
+
+func (t *mathTable) CursorUp() {
+	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
+	t.hoveredRow = (t.hoveredRow + len(t.table) - 1) % len(t.table)
+	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
+}
+
+func (t *mathTable) CursorRight() {
+	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
+	t.hoveredCol = (t.hoveredCol + 1) % len(t.table[0])
+	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
+}
+
+func (t *mathTable) CursorLeft() {
+	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
+	t.hoveredCol = (t.hoveredCol + len(t.table[0]) - 1) % len(t.table[0])
+	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
+}
+
+func (t *mathTable) Toggle() {
+	t.table[t.hoveredRow][t.hoveredCol].Toggle()
+}
+
 type keymap struct {
 	up     key.Binding
 	down   key.Binding
@@ -243,9 +231,8 @@ type keymap struct {
 type model struct {
 	flexBox *flexbox.FlexBox
 
-	table      mathTable
-	hoveredRow int
-	hoveredCol int
+	tableLeft  mathTable
+	tableRight mathTable
 
 	timer         timer.Model
 	timerProgress progress.Model
@@ -254,36 +241,62 @@ type model struct {
 	help   help.Model
 }
 
-// func newModel(keymap) Model {
+func newModel(keymap keymap) model {
+	mathRows := make([][]mathBlock, 0)
+	for i := 0; i < 4; i++ {
+		r := make([]mathBlock, 0)
+		for j := 0; j < 3; j++ {
+			r = append(r, newMathBlock(mathFormula{
+				lhs: 1,
+				rhs: 1,
+				op:  "+",
+			}))
+		}
+		mathRows = append(mathRows, r)
+	}
 
-// }
+	// TODO: gen another table instead of copying
+	mathRows2 := make([][]mathBlock, len(mathRows))
+	for i, row := range mathRows {
+		mathRows2[i] = make([]mathBlock, len(row))
+		copy(mathRows2[i], row)
+	}
 
-func (t *model) CursorDown() {
-	t.table.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredRow = (t.hoveredRow + 1) % len(t.table.table)
-	t.table.table[t.hoveredRow][t.hoveredCol].isHovered = true
-}
+	m := model{
+		flexBox:       flexbox.New(0, 0),
+		tableLeft:     newMathTable(mathRows),
+		tableRight:    newMathTable(mathRows2),
+		timer:         timer.NewWithInterval(gameDuration, time.Millisecond),
+		timerProgress: progress.New(progress.WithDefaultGradient(), progress.WithoutPercentage()),
+		keymap:        keymap,
+		help:          help.New(),
+	}
+	m.tableLeft.table[0][0].isHovered = true
 
-func (t *model) CursorUp() {
-	t.table.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredRow = (t.hoveredRow + len(t.table.table) - 1) % len(t.table.table)
-	t.table.table[t.hoveredRow][t.hoveredCol].isHovered = true
-}
+	flexRows := make([]*flexbox.Row, 0)
+	styleScoreHeader := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
+	row0 := m.flexBox.NewRow().AddCells(
+		flexbox.NewCell(30, 1).SetStyle(styleScoreHeader),
+	)
+	flexRows = append(flexRows, row0)
 
-func (t *model) CursorRight() {
-	t.table.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredCol = (t.hoveredCol + 1) % len(t.table.table[0])
-	t.table.table[t.hoveredRow][t.hoveredCol].isHovered = true
-}
+	styleMathTable := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
+	row1 := m.flexBox.NewRow().AddCells(
+		flexbox.NewCell(4, 6).SetStyle(styleMathTable),
+		flexbox.NewCell(2, 6).SetStyle(styleMathTable),
+		flexbox.NewCell(4, 6).SetStyle(styleMathTable),
+	)
+	flexRows = append(flexRows, row1)
 
-func (t *model) CursorLeft() {
-	t.table.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredCol = (t.hoveredCol + len(t.table.table[0]) - 1) % len(t.table.table[0])
-	t.table.table[t.hoveredRow][t.hoveredCol].isHovered = true
-}
+	styleBottomRow := lipgloss.NewStyle().Padding(1).AlignVertical(lipgloss.Bottom)
+	row2 := m.flexBox.NewRow().SetStyle(styleBottomRow).AddCells(
+		flexbox.NewCell(30, 2),
+	)
+	flexRows = append(flexRows, row2)
 
-func (t *model) Toggle() {
-	t.table.table[t.hoveredRow][t.hoveredCol].Toggle()
+	m.flexBox.AddRows(flexRows)
+
+	return m
 }
 
 func (t *model) renderTimer() string {
@@ -331,22 +344,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case tea.KeySpace.String():
-			m.Toggle()
-		// case "+":
-		// 	m.table.score += 10000
+			m.tableLeft.Toggle()
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
 
 		switch {
 		case key.Matches(msg, m.keymap.up):
-			m.CursorUp()
+			m.tableLeft.CursorUp()
 		case key.Matches(msg, m.keymap.down):
-			m.CursorDown()
+			m.tableLeft.CursorDown()
 		case key.Matches(msg, m.keymap.left):
-			m.CursorLeft()
+			m.tableLeft.CursorLeft()
 		case key.Matches(msg, m.keymap.right):
-			m.CursorRight()
+			m.tableLeft.CursorRight()
 		}
 	}
 
@@ -372,10 +383,10 @@ func (m model) View() string {
 	})
 	tableCell.SetContent(lipgloss.JoinVertical(
 		lipgloss.Top,
-		m.table.Render(),
+		m.tableLeft.Render(),
 	))
 	tableCell = row1.GetCell(2)
-	tableCell.SetContent(m.table.Render())
+	tableCell.SetContent(m.tableRight.Render())
 
 	m.flexBox.GetRow(2).GetCell(0).SetContent(help)
 
