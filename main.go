@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -26,19 +25,11 @@ import (
 	"github.com/muesli/termenv"
 )
 
-const (
-	host         = "localhost"
-	port         = "23234"
-	gameDuration = time.Second * 60
-)
+// type app struct {
+// 	*ssh.Server
 
-var (
-	colorWhite         = lipgloss.Color("#ffffff")
-	colorHovered       = lipgloss.Color("#f368e0")
-	styleBlockNormal   = lipgloss.NewStyle().Foreground(colorWhite).BorderForeground(colorWhite)
-	styleBlockHovered  = lipgloss.NewStyle().Foreground(colorHovered).BorderForeground(colorHovered)
-	styleBlockSelected = lipgloss.NewStyle().Background(colorHovered).Foreground(colorWhite)
-)
+// 	progs map[string]*tea.Program
+// }
 
 func main() {
 	s, err := wish.NewServer(
@@ -97,129 +88,6 @@ func myCustomBubbleteaMiddleware() wish.Middleware {
 	return bubbletea.MiddlewareWithProgramHandler(teaHandler, termenv.ANSI256)
 }
 
-type mathFormula struct {
-	lhs int
-	rhs int
-	op  string
-}
-
-func (f *mathFormula) Render() string {
-	styleOperand := lipgloss.NewStyle().Width(2)
-	return lipgloss.JoinHorizontal(
-		lipgloss.Center,
-		styleOperand.Align(lipgloss.Right).Render(strconv.Itoa(f.lhs)),
-		" ",
-		f.op,
-		" ",
-		styleOperand.Align(lipgloss.Left).Render(strconv.Itoa(f.rhs)),
-	)
-}
-
-type mathBlock struct {
-	formula    mathFormula
-	value      int
-	isSelected bool
-	isHovered  bool
-}
-
-func newMathBlock(formula mathFormula) mathBlock {
-	return mathBlock{
-		formula:    formula,
-		value:      0,
-		isSelected: false,
-		isHovered:  false,
-	}
-}
-
-func (b *mathBlock) Render() string {
-	formula := b.formula.Render()
-
-	baseStyle := lipgloss.NewStyle()
-
-	if b.isSelected {
-		baseStyle = baseStyle.Inherit(styleBlockSelected)
-	}
-
-	if b.isHovered {
-		baseStyle = baseStyle.Inherit(styleBlockHovered)
-	} else {
-		baseStyle = baseStyle.Inherit(styleBlockNormal)
-	}
-
-	style := lipgloss.NewStyle().Padding(1).Border(lipgloss.NormalBorder()).Align(lipgloss.Center, lipgloss.Center).Inherit(baseStyle)
-	return style.Render(formula)
-}
-
-func (b *mathBlock) Toggle() {
-	b.isSelected = !b.isSelected
-}
-
-type mathTable struct {
-	table      [][]mathBlock
-	score      int
-	hoveredRow int
-	hoveredCol int
-}
-
-func newMathTable(table [][]mathBlock) mathTable {
-	t := mathTable{
-		table:      table,
-		score:      0,
-		hoveredRow: 0,
-		hoveredCol: 0,
-	}
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
-	return t
-}
-
-func (t *mathTable) Render() string {
-	rows := make([]string, 0, len(t.table))
-
-	for _, row := range t.table {
-		rowString := make([]string, 0, len(row))
-		for _, b := range row {
-			rowString = append(rowString, b.Render())
-		}
-		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Left, rowString...))
-	}
-
-	width := lipgloss.Width(rows[0])
-	scoreLabel := lipgloss.NewStyle().Align(lipgloss.Left).Render("score: ")
-	scoreValue := lipgloss.NewStyle().Align(lipgloss.Right).Width(width - lipgloss.Width(scoreLabel)).Render(strconv.Itoa(t.score))
-	score := lipgloss.JoinHorizontal(lipgloss.Left, scoreLabel, scoreValue)
-	rows = append([]string{score}, rows...)
-
-	return lipgloss.JoinVertical(lipgloss.Bottom, rows...)
-}
-
-func (t *mathTable) CursorDown() {
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredRow = (t.hoveredRow + 1) % len(t.table)
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
-}
-
-func (t *mathTable) CursorUp() {
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredRow = (t.hoveredRow + len(t.table) - 1) % len(t.table)
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
-}
-
-func (t *mathTable) CursorRight() {
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredCol = (t.hoveredCol + 1) % len(t.table[0])
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
-}
-
-func (t *mathTable) CursorLeft() {
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredCol = (t.hoveredCol + len(t.table[0]) - 1) % len(t.table[0])
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
-}
-
-func (t *mathTable) Toggle() {
-	t.table[t.hoveredRow][t.hoveredCol].Toggle()
-}
-
 type keymap struct {
 	up     key.Binding
 	down   key.Binding
@@ -231,8 +99,8 @@ type keymap struct {
 type model struct {
 	flexBox *flexbox.FlexBox
 
-	tableLeft  mathTable
-	tableRight mathTable
+	tableLeft  ArithmeticTable
+	tableRight ArithmeticTable
 
 	timer         timer.Model
 	timerProgress progress.Model
@@ -242,11 +110,11 @@ type model struct {
 }
 
 func newModel(keymap keymap) model {
-	mathRows := make([][]mathBlock, 0)
+	mathRows := make([][]ArithmeticBlock, 0)
 	for i := 0; i < 4; i++ {
-		r := make([]mathBlock, 0)
+		r := make([]ArithmeticBlock, 0)
 		for j := 0; j < 3; j++ {
-			r = append(r, newMathBlock(mathFormula{
+			r = append(r, NewArithmeticBlock(Formula{
 				lhs: 1,
 				rhs: 1,
 				op:  "+",
@@ -256,9 +124,9 @@ func newModel(keymap keymap) model {
 	}
 
 	// TODO: gen another table instead of copying
-	mathRows2 := make([][]mathBlock, len(mathRows))
+	mathRows2 := make([][]ArithmeticBlock, len(mathRows))
 	for i, row := range mathRows {
-		mathRows2[i] = make([]mathBlock, len(row))
+		mathRows2[i] = make([]ArithmeticBlock, len(row))
 		copy(mathRows2[i], row)
 	}
 
