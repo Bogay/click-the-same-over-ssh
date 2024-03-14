@@ -5,6 +5,6 @@ type Room struct {
 	players []string
 }
 
-func NewRoom(id int) Room {
-	return Room{id: id, players: make([]string, 0)}
+func NewRoom(id int) *Room {
+	return &Room{id: id, players: make([]string, 0)}
 }

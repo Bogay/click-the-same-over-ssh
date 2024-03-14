@@ -105,6 +105,27 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 		right:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "right")),
 		choose: key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "(un)select")),
 	})
+	m.user = user
+	m.app = app
+
+	// add to room
+	if len(app.playerToRoom) == 0 {
+		room := NewRoom(0)
+		room.players = append(room.players, user)
+		app.playerToRoom[user] = room
+		m.userLeft = user
+	} else {
+		for _, r := range app.playerToRoom {
+			for _, p := range r.players {
+				app.progs[p].Send(Join{user: user, index: 1})
+				m.userLeft = p
+				break
+			}
+			r.players = append(r.players, user)
+			m.userRight = user
+			break
+		}
+	}
 
 	prog := tea.NewProgram(m, append(bubbletea.MakeOptions(sess), tea.WithAltScreen())...)
 	app.progs[user] = prog

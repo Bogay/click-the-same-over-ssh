@@ -70,7 +70,7 @@ type ArithmeticTable struct {
 	hoveredCol int
 }
 
-func newMathTable(table [][]ArithmeticBlock) ArithmeticTable {
+func newMathTable(table [][]ArithmeticBlock) *ArithmeticTable {
 	t := ArithmeticTable{
 		table:      table,
 		score:      0,
@@ -78,7 +78,7 @@ func newMathTable(table [][]ArithmeticBlock) ArithmeticTable {
 		hoveredCol: 0,
 	}
 	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
-	return t
+	return &t
 }
 
 func (t *ArithmeticTable) Render() string {
