@@ -1,13 +1,7 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"net"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/76creates/stickers/flexbox"
@@ -17,75 +11,11 @@ import (
 	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/log"
-	"github.com/charmbracelet/ssh"
-	"github.com/charmbracelet/wish"
-	"github.com/charmbracelet/wish/bubbletea"
-	"github.com/charmbracelet/wish/logging"
-	"github.com/muesli/termenv"
 )
 
-// type app struct {
-// 	*ssh.Server
-
-// 	progs map[string]*tea.Program
-// }
-
 func main() {
-	s, err := wish.NewServer(
-		wish.WithAddress(net.JoinHostPort(host, port)),
-		wish.WithHostKeyPath(".ssh/id_ed25519"),
-		wish.WithMiddleware(
-			myCustomBubbleteaMiddleware(),
-			logging.Middleware(),
-		),
-	)
-	if err != nil {
-		log.Fatal("Could not start server", "error", err)
-	}
-
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	log.Info("Starting SSH server", "host", host, "port", port)
-	go func() {
-		if err = s.ListenAndServe(); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
-			log.Error("Could not start server", "error", err)
-			done <- nil
-		}
-	}()
-
-	<-done
-	log.Info("Stopping SSH server")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := s.Shutdown(ctx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
-		log.Error("Could not stop server", "error", err)
-	}
-}
-
-func myCustomBubbleteaMiddleware() wish.Middleware {
-	newProg := func(m tea.Model, opts ...tea.ProgramOption) *tea.Program {
-		p := tea.NewProgram(m, opts...)
-		return p
-	}
-	teaHandler := func(s ssh.Session) *tea.Program {
-		_, _, active := s.Pty()
-		if !active {
-			wish.Fatalln(s, "no active terminal, skipping")
-			return nil
-		}
-
-		m := newModel(keymap{
-			up:     key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up")),
-			down:   key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down")),
-			left:   key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "left")),
-			right:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "right")),
-			choose: key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "(un)select")),
-		})
-
-		return newProg(m, append(bubbletea.MakeOptions(s), tea.WithAltScreen())...)
-	}
-	return bubbletea.MiddlewareWithProgramHandler(teaHandler, termenv.ANSI256)
+	app := NewApp()
+	app.Start()
 }
 
 type keymap struct {
@@ -97,6 +27,7 @@ type keymap struct {
 }
 
 type model struct {
+	app     *App
 	flexBox *flexbox.FlexBox
 
 	tableLeft  ArithmeticTable
