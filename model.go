@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/log"
 )
 
 type keymap struct {
@@ -100,6 +101,21 @@ func (t *model) renderTimer() string {
 }
 
 func (m model) Init() tea.Cmd {
+	go func() {
+		for {
+			select {
+			case evt := <-m.tableLeft.updateBlockFlagsCh:
+				evt.user = m.user
+				log.Debugf("send update block: %v", evt)
+				go m.app.Send(m.user, evt)
+			case evt := <-m.tableRight.updateBlockFlagsCh:
+				evt.user = m.user
+				log.Infof("send update block: %v", evt)
+				go m.app.Send(m.user, evt)
+			}
+		}
+	}()
+
 	return tea.Batch(tickCmd(), m.timer.Init())
 }
 
@@ -124,6 +140,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		progressModel, cmd := m.timerProgress.Update(msg)
 		m.timerProgress = progressModel.(progress.Model)
 		return m, cmd
+
+	case BlockFlags:
+		log.Debugf("update block %v", msg)
+		table := m.tableLeft
+		if msg.user == m.userRight {
+			table = m.tableRight
+		}
+		cell := &table.table[msg.row][msg.col]
+		cell.isHovered = msg.isHovered
+		cell.isSelected = msg.isSelected
+		return m, nil
+
+	case Join:
+		log.Infof("new user %s join %d", msg.user, msg.index)
+		if msg.index == 0 {
+			m.userLeft = msg.user
+		} else if msg.index == 1 {
+			m.userRight = msg.user
+		}
+		return m, nil
 
 	// TODO: end game
 	case timer.TimeoutMsg:
@@ -185,6 +221,9 @@ func (m model) View() string {
 	))
 	tableCell = row1.GetCell(2)
 	tableCell.SetContent(m.tableRight.Render())
+
+	// help += fmt.Sprintf("\nuser left:  %s", m.userLeft)
+	// help += fmt.Sprintf("\nuser right: %s", m.userRight)
 
 	m.flexBox.GetRow(2).GetCell(0).SetContent(help)
 

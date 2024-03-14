@@ -78,9 +78,10 @@ func (app *App) Start() {
 func (app *App) Send(player string, msg tea.Msg) {
 	if room, exists := app.playerToRoom[player]; exists {
 		for _, p := range room.players {
-			app.progs[p].Send(msg)
+			go app.progs[p].Send(msg)
 		}
 	} else {
+		log.Errorf("user not found: %s", player)
 		// TODO: error handling
 	}
 }
@@ -103,7 +104,7 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 		down:   key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down")),
 		left:   key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "left")),
 		right:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "right")),
-		choose: key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "(un)select")),
+		choose: key.NewBinding(key.WithKeys(tea.KeySpace.String()), key.WithHelp("space", "(un)select")),
 	})
 	m.user = user
 	m.app = app
@@ -123,6 +124,7 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 			}
 			r.players = append(r.players, user)
 			m.userRight = user
+			app.playerToRoom[user] = r
 			break
 		}
 	}

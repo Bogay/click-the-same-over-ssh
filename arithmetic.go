@@ -68,14 +68,17 @@ type ArithmeticTable struct {
 	score      int
 	hoveredRow int
 	hoveredCol int
+
+	updateBlockFlagsCh chan BlockFlags
 }
 
 func newMathTable(table [][]ArithmeticBlock) *ArithmeticTable {
 	t := ArithmeticTable{
-		table:      table,
-		score:      0,
-		hoveredRow: 0,
-		hoveredCol: 0,
+		table:              table,
+		score:              0,
+		hoveredRow:         0,
+		hoveredCol:         0,
+		updateBlockFlagsCh: make(chan BlockFlags),
 	}
 	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
 	return &t
@@ -101,30 +104,41 @@ func (t *ArithmeticTable) Render() string {
 	return lipgloss.JoinVertical(lipgloss.Bottom, rows...)
 }
 
-func (t *ArithmeticTable) CursorDown() {
+func (t *ArithmeticTable) updateCursor(updater func()) {
 	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredRow = (t.hoveredRow + 1) % len(t.table)
+	t.updateBlockFlagsCh <- updateBlockFlags(t.hoveredRow, t.hoveredCol, &t.table[t.hoveredRow][t.hoveredCol])
+
+	updater()
+
 	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
+	t.updateBlockFlagsCh <- updateBlockFlags(t.hoveredRow, t.hoveredCol, &t.table[t.hoveredRow][t.hoveredCol])
+}
+
+func (t *ArithmeticTable) CursorDown() {
+	t.updateCursor(func() {
+		t.hoveredRow = (t.hoveredRow + 1) % len(t.table)
+	})
 }
 
 func (t *ArithmeticTable) CursorUp() {
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredRow = (t.hoveredRow + len(t.table) - 1) % len(t.table)
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
+	t.updateCursor(func() {
+		t.hoveredRow = (t.hoveredRow + len(t.table) - 1) % len(t.table)
+	})
 }
 
 func (t *ArithmeticTable) CursorRight() {
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredCol = (t.hoveredCol + 1) % len(t.table[0])
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
+	t.updateCursor(func() {
+		t.hoveredCol = (t.hoveredCol + 1) % len(t.table[0])
+	})
 }
 
 func (t *ArithmeticTable) CursorLeft() {
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = false
-	t.hoveredCol = (t.hoveredCol + len(t.table[0]) - 1) % len(t.table[0])
-	t.table[t.hoveredRow][t.hoveredCol].isHovered = true
+	t.updateCursor(func() {
+		t.hoveredCol = (t.hoveredCol + len(t.table[0]) - 1) % len(t.table[0])
+	})
 }
 
 func (t *ArithmeticTable) Toggle() {
 	t.table[t.hoveredRow][t.hoveredCol].Toggle()
+	t.updateBlockFlagsCh <- updateBlockFlags(t.hoveredRow, t.hoveredCol, &t.table[t.hoveredRow][t.hoveredCol])
 }
