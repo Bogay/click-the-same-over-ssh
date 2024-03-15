@@ -129,6 +129,18 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 		}
 	}
 
+	// listen to connection close
+	go func() {
+		ctx := sess.Context()
+		<-ctx.Done()
+
+		// release user resource
+		delete(app.progs, user)
+		delete(app.playerToRoom, user)
+
+		log.Infof("Good bye %s", user)
+	}()
+
 	prog := tea.NewProgram(m, append(bubbletea.MakeOptions(sess), tea.WithAltScreen())...)
 	app.progs[user] = prog
 
