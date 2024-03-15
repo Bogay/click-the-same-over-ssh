@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/log"
 )
 
 const (
@@ -52,17 +53,19 @@ func (f *Formula) UpdateValue(val int) {
 	f.val = val
 }
 
+func (f *Formula) Value() int {
+	return f.val
+}
+
 type ArithmeticBlock struct {
-	formula    Formula
-	value      int
+	formula    *Formula
 	isSelected bool
 	isHovered  bool
 }
 
-func NewArithmeticBlock(formula Formula) ArithmeticBlock {
+func NewArithmeticBlock(val int) ArithmeticBlock {
 	return ArithmeticBlock{
-		formula:    formula,
-		value:      0,
+		formula:    NewFormula(val),
 		isSelected: false,
 		isHovered:  false,
 	}
@@ -87,8 +90,18 @@ func (b *ArithmeticBlock) View() string {
 	return style.Render(formula)
 }
 
-func (b *ArithmeticBlock) Toggle() {
+func (b *ArithmeticBlock) Toggle() *ArithmeticBlock {
 	b.isSelected = !b.isSelected
+	return b
+}
+
+func (b *ArithmeticBlock) Value() int {
+	return b.formula.Value()
+}
+
+func (b *ArithmeticBlock) UpdateValue(val int) {
+	b.formula.UpdateValue(val)
+	b.isSelected = false
 }
 
 type ArithmeticTable struct {
@@ -96,6 +109,10 @@ type ArithmeticTable struct {
 	score      int
 	hoveredRow int
 	hoveredCol int
+
+	selectedBlock *ArithmeticBlock
+	selectedRow   int
+	selectedCol   int
 
 	updateBlockFlagsCh chan BlockFlags
 }
@@ -167,6 +184,27 @@ func (t *ArithmeticTable) CursorLeft() {
 }
 
 func (t *ArithmeticTable) Toggle() {
-	t.table[t.hoveredRow][t.hoveredCol].Toggle()
-	t.updateBlockFlagsCh <- updateBlockFlags(t.hoveredRow, t.hoveredCol, &t.table[t.hoveredRow][t.hoveredCol])
+	b := t.table[t.hoveredRow][t.hoveredCol].Toggle()
+	t.updateBlockFlagsCh <- updateBlockFlags(t.hoveredRow, t.hoveredCol, b)
+
+	if t.selectedBlock == nil {
+		t.selectedBlock = b
+		t.selectedRow = t.hoveredRow
+		t.selectedCol = t.hoveredCol
+	} else {
+		a := t.selectedBlock
+
+		if a.Value() == b.Value() {
+			a.UpdateValue(1 + rand.Intn(13))
+			b.UpdateValue(1 + rand.Intn(13))
+		} else {
+			a.Toggle()
+			b.Toggle()
+
+			log.Debugf("wrong")
+		}
+		t.updateBlockFlagsCh <- updateBlockFlags(t.selectedRow, t.selectedCol, a)
+		t.updateBlockFlagsCh <- updateBlockFlags(t.hoveredRow, t.hoveredCol, b)
+		t.selectedBlock = nil
+	}
 }

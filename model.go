@@ -83,7 +83,7 @@ func genTable() [][]ArithmeticBlock {
 	for i := 0; i < 4; i++ {
 		r := make([]ArithmeticBlock, 0)
 		for j := 0; j < 3; j++ {
-			r = append(r, NewArithmeticBlock(*NewFormula(1 + rand.Intn(13))))
+			r = append(r, NewArithmeticBlock(1+rand.Intn(13)))
 		}
 		mathRows = append(mathRows, r)
 	}
