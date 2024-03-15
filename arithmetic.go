@@ -1,18 +1,37 @@
 package main
 
 import (
+	"math/rand"
 	"strconv"
 
 	"github.com/charmbracelet/lipgloss"
+)
+
+const (
+	OperatorPlug = "+"
 )
 
 type Formula struct {
 	lhs int
 	rhs int
 	op  string
+
+	val int
 }
 
-func (f *Formula) Render() string {
+func NewFormula(val int) *Formula {
+	lhs := rand.Intn(val)
+	rhs := val - lhs
+
+	return &Formula{
+		lhs: lhs,
+		rhs: rhs,
+		op:  OperatorPlug,
+		val: val,
+	}
+}
+
+func (f *Formula) View() string {
 	styleOperand := lipgloss.NewStyle().Width(2)
 	return lipgloss.JoinHorizontal(
 		lipgloss.Center,
@@ -22,6 +41,15 @@ func (f *Formula) Render() string {
 		" ",
 		styleOperand.Align(lipgloss.Left).Render(strconv.Itoa(f.rhs)),
 	)
+}
+
+func (f *Formula) UpdateValue(val int) {
+	lhs := rand.Intn(val)
+	rhs := val - lhs
+
+	f.lhs = lhs
+	f.rhs = rhs
+	f.val = val
 }
 
 type ArithmeticBlock struct {
@@ -41,7 +69,7 @@ func NewArithmeticBlock(formula Formula) ArithmeticBlock {
 }
 
 func (b *ArithmeticBlock) View() string {
-	formula := b.formula.Render()
+	formula := b.formula.View()
 
 	baseStyle := lipgloss.NewStyle()
 

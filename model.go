@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/76creates/stickers/flexbox"
@@ -82,11 +83,7 @@ func genTable() [][]ArithmeticBlock {
 	for i := 0; i < 4; i++ {
 		r := make([]ArithmeticBlock, 0)
 		for j := 0; j < 3; j++ {
-			r = append(r, NewArithmeticBlock(Formula{
-				lhs: 1,
-				rhs: 1,
-				op:  "+",
-			}))
+			r = append(r, NewArithmeticBlock(*NewFormula(1 + rand.Intn(13))))
 		}
 		mathRows = append(mathRows, r)
 	}
