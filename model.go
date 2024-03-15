@@ -23,7 +23,7 @@ type keymap struct {
 	choose key.Binding
 }
 
-type model struct {
+type AppModel struct {
 	user    string
 	app     *App
 	flexBox *flexbox.FlexBox
@@ -40,8 +40,8 @@ type model struct {
 	help   help.Model
 }
 
-func newModel(keymap keymap) model {
-	m := model{
+func newModel(keymap keymap) AppModel {
+	m := AppModel{
 		flexBox:       flexbox.New(0, 0),
 		tableLeft:     newMathTable(genTable()),
 		tableRight:    newMathTable(genTable()),
@@ -90,14 +90,14 @@ func genTable() [][]ArithmeticBlock {
 	return mathRows
 }
 
-func (t *model) renderTimer() string {
+func (t *AppModel) renderTimer() string {
 	prog := t.timerProgress.View()
 	time := t.timer.Timeout.Seconds()
 
 	return fmt.Sprintf("%s %.2fs", prog, time)
 }
 
-func (m model) Init() tea.Cmd {
+func (m AppModel) Init() tea.Cmd {
 	go func() {
 		for {
 			select {
@@ -124,7 +124,7 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.flexBox.SetHeight(msg.Height)
@@ -205,7 +205,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) View() string {
+func (m AppModel) View() string {
 	m.flexBox.ForceRecalculate()
 	row0 := m.flexBox.GetRow(0)
 	headerCell := row0.GetCell(0)
