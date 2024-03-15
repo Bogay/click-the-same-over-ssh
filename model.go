@@ -157,6 +157,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.userRight = msg.user
 		}
 		return m, nil
+	case Score:
+		if msg.user == m.userLeft {
+			m.tableLeft.score += msg.delta
+		} else {
+			m.tableRight.score += msg.delta
+		}
+		return m, nil
 
 	// TODO: end game
 	case timer.TimeoutMsg:
@@ -188,7 +195,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keymap.right):
 			table.CursorRight()
 		case key.Matches(msg, m.keymap.choose):
-			table.Toggle()
+			s := table.Toggle()
+			if s != 0 {
+				m.app.Send(m.user, Score{user: m.user, delta: s})
+			}
 		}
 	}
 

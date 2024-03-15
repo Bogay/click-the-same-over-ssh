@@ -183,10 +183,11 @@ func (t *ArithmeticTable) CursorLeft() {
 	})
 }
 
-func (t *ArithmeticTable) Toggle() {
+func (t *ArithmeticTable) Toggle() int {
 	b := t.table[t.hoveredRow][t.hoveredCol].Toggle()
 	t.updateBlockFlagsCh <- updateBlockFlags(t.hoveredRow, t.hoveredCol, b)
 
+	score := 0
 	if t.selectedBlock == nil {
 		t.selectedBlock = b
 		t.selectedRow = t.hoveredRow
@@ -197,6 +198,7 @@ func (t *ArithmeticTable) Toggle() {
 		if a.Value() == b.Value() {
 			a.UpdateValue(1 + rand.Intn(13))
 			b.UpdateValue(1 + rand.Intn(13))
+			score = 1
 		} else {
 			a.Toggle()
 			b.Toggle()
@@ -207,4 +209,6 @@ func (t *ArithmeticTable) Toggle() {
 		t.updateBlockFlagsCh <- updateBlockFlags(t.hoveredRow, t.hoveredCol, b)
 		t.selectedBlock = nil
 	}
+
+	return score
 }

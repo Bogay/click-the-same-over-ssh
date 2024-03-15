@@ -21,3 +21,8 @@ type Join struct {
 	user  string
 	index int
 }
+
+type Score struct {
+	user  string
+	delta int
+}
