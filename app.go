@@ -26,12 +26,14 @@ type App struct {
 	progs map[string]*tea.Program
 
 	playerToRoom map[string]*Room
+	roomRepo     RoomRepository
 }
 
 func NewApp() *App {
 	app := App{
 		progs:        make(map[string]*tea.Program),
 		playerToRoom: make(map[string]*Room),
+		roomRepo:     NewInMemoryRoomRepository(),
 	}
 
 	s, err := wish.NewServer(
@@ -111,7 +113,7 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 
 	// add to room
 	if len(app.playerToRoom) == 0 {
-		room := NewRoom(0)
+		room, _ := app.roomRepo.Create(0)
 		room.players = append(room.players, user)
 		app.playerToRoom[user] = room
 		m.userLeft = user
@@ -136,6 +138,13 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 
 		// release user resource
 		delete(app.progs, user)
+
+		r := app.playerToRoom[user]
+		r.RemovePlayer(user)
+		if len(r.players) == 0 {
+			app.roomRepo.Remove(r.id)
+		}
+
 		delete(app.playerToRoom, user)
 
 		log.Infof("Good bye %s", user)
