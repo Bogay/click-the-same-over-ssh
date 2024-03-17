@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math/rand"
 	"strconv"
 
@@ -117,7 +118,7 @@ type ArithmeticTable struct {
 	updateBlockFlagsCh chan BlockFlags
 }
 
-func newMathTable(table [][]ArithmeticBlock) *ArithmeticTable {
+func NewArithmeticTable(table [][]ArithmeticBlock) *ArithmeticTable {
 	t := ArithmeticTable{
 		table:              table,
 		score:              0,
@@ -211,4 +212,55 @@ func (t *ArithmeticTable) Toggle() int {
 	}
 
 	return score
+}
+
+type ArithmeticTableRepository interface {
+	FindByPlayer(player string) *ArithmeticTable
+	Create(player string) (*ArithmeticTable, error)
+	Update(player string, updater func(*ArithmeticTable)) error
+	RemoveByPlayer(player string) error
+}
+
+type InMemoryArithmeticTableRepository struct {
+	tables map[string]*ArithmeticTable
+}
+
+func NewInMemoryArithmeticTableRepository() *InMemoryArithmeticTableRepository {
+	return &InMemoryArithmeticTableRepository{
+		tables: make(map[string]*ArithmeticTable),
+	}
+}
+
+func (r *InMemoryArithmeticTableRepository) FindByPlayer(player string) *ArithmeticTable {
+	return r.tables[player]
+}
+
+func (r *InMemoryArithmeticTableRepository) Create(player string) (*ArithmeticTable, error) {
+	if t := r.FindByPlayer(player); t != nil {
+		return nil, fmt.Errorf("player %s exists", player)
+	}
+
+	t := NewArithmeticTable(genTable())
+	r.tables[player] = t
+	return t, nil
+}
+
+func (r *InMemoryArithmeticTableRepository) Update(player string, updater func(*ArithmeticTable)) error {
+	t := r.FindByPlayer(player)
+	if r == nil {
+		return fmt.Errorf("player %s not exists", player)
+	}
+	updater(t)
+
+	return nil
+}
+
+func (r *InMemoryArithmeticTableRepository) RemoveByPlayer(player string) error {
+	t := r.FindByPlayer(player)
+	if t == nil {
+		return fmt.Errorf("player %s not exists", player)
+	}
+
+	delete(r.tables, player)
+	return nil
 }

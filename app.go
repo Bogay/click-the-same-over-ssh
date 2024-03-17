@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/log"
 	"github.com/charmbracelet/ssh"
@@ -26,6 +27,7 @@ type App struct {
 
 	playerToRoom map[string]*Room
 	roomRepo     RoomRepository
+	tableRepo    ArithmeticTableRepository
 }
 
 func NewApp() *App {
@@ -33,6 +35,7 @@ func NewApp() *App {
 		progs:        make(map[string]*tea.Program),
 		playerToRoom: make(map[string]*Room),
 		roomRepo:     NewInMemoryRoomRepository(),
+		tableRepo:    NewInMemoryArithmeticTableRepository(),
 	}
 
 	s, err := wish.NewServer(
@@ -68,7 +71,7 @@ func (app *App) Start() {
 
 	<-done
 	log.Info("Stopping SSH server")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := app.Server.Shutdown(ctx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 		log.Error("Could not stop server", "error", err)
@@ -100,60 +103,71 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 		wish.Fatalln(sess, "user has another session")
 	}
 
-	m := NewRoomPage(30, 80, app.roomRepo)
-	prog := tea.NewProgram(m, append(bubbletea.MakeOptions(sess), tea.WithAltScreen())...)
-
-	// m := newModel(keymap{
-	// 	up:     key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up")),
-	// 	down:   key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down")),
-	// 	left:   key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "left")),
-	// 	right:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "right")),
-	// 	choose: key.NewBinding(key.WithKeys(tea.KeySpace.String()), key.WithHelp("space", "(un)select")),
-	// })
-	// m.user = user
-	// m.app = app
-
-	// // add to room
-	// if len(app.playerToRoom) == 0 {
-	// 	room, _ := app.roomRepo.Create(0)
-	// 	room.players = append(room.players, user)
-	// 	app.playerToRoom[user] = room
-	// 	m.userLeft = user
-	// } else {
-	// 	for _, r := range app.playerToRoom {
-	// 		for _, p := range r.players {
-	// 			app.progs[p].Send(Join{user: user, index: 1})
-	// 			m.userLeft = p
-	// 			break
-	// 		}
-	// 		r.players = append(r.players, user)
-	// 		m.userRight = user
-	// 		app.playerToRoom[user] = r
-	// 		break
-	// 	}
-	// }
-
-	// // listen to connection close
-	// go func() {
-	// 	ctx := sess.Context()
-	// 	<-ctx.Done()
-
-	// 	// release user resource
-	// 	delete(app.progs, user)
-
-	// 	r := app.playerToRoom[user]
-	// 	r.RemovePlayer(user)
-	// 	if len(r.players) == 0 {
-	// 		app.roomRepo.Remove(r.id)
-	// 	}
-
-	// 	delete(app.playerToRoom, user)
-
-	// 	log.Infof("Good bye %s", user)
-	// }()
-
+	// m := NewRoomPage(30, 80, app.roomRepo)
 	// prog := tea.NewProgram(m, append(bubbletea.MakeOptions(sess), tea.WithAltScreen())...)
-	// app.progs[user] = prog
+
+	m := NewAppModel(keymap{
+		up:     key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up")),
+		down:   key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down")),
+		left:   key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "left")),
+		right:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "right")),
+		choose: key.NewBinding(key.WithKeys(tea.KeySpace.String()), key.WithHelp("space", "(un)select")),
+	})
+	m.user = user
+	m.app = app
+
+	table, err := app.tableRepo.Create(user)
+	if err != nil {
+		wish.Fatalln(sess, err)
+		return nil
+	}
+
+	// add to room
+	if len(app.playerToRoom) == 0 {
+		room, _ := app.roomRepo.Create(0)
+		room.players = append(room.players, user)
+		app.playerToRoom[user] = room
+		m.userLeft = user
+		m.tableLeft = table
+	} else {
+		for _, r := range app.playerToRoom {
+			for _, p := range r.players {
+				app.progs[p].Send(Join{user: user, index: 1})
+				m.userLeft = p
+				m.tableLeft = app.tableRepo.FindByPlayer(p)
+				break
+			}
+			r.players = append(r.players, user)
+			app.playerToRoom[user] = r
+			m.userRight = user
+			m.tableRight = table
+			break
+		}
+	}
+
+	// listen to connection close
+	go func() {
+		ctx := sess.Context()
+		<-ctx.Done()
+
+		// release user resource
+		delete(app.progs, user)
+
+		r := app.playerToRoom[user]
+		r.RemovePlayer(user)
+		if len(r.players) == 0 {
+			app.roomRepo.Remove(r.id)
+		}
+
+		delete(app.playerToRoom, user)
+
+		app.tableRepo.RemoveByPlayer(user)
+
+		log.Infof("Good bye %s", user)
+	}()
+
+	prog := tea.NewProgram(m, append(bubbletea.MakeOptions(sess), tea.WithAltScreen())...)
+	app.progs[user] = prog
 
 	return prog
 }

@@ -40,17 +40,14 @@ type AppModel struct {
 	help   help.Model
 }
 
-func newModel(keymap keymap) AppModel {
+func NewAppModel(keymap keymap) AppModel {
 	m := AppModel{
 		flexBox:       flexbox.New(0, 0),
-		tableLeft:     newMathTable(genTable()),
-		tableRight:    newMathTable(genTable()),
 		timer:         timer.NewWithInterval(gameDuration, time.Millisecond),
 		timerProgress: progress.New(progress.WithDefaultGradient(), progress.WithoutPercentage()),
 		keymap:        keymap,
 		help:          help.New(),
 	}
-	m.tableLeft.table[0][0].isHovered = true
 
 	flexRows := make([]*flexbox.Row, 0)
 	styleScoreHeader := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
@@ -99,7 +96,14 @@ func (t *AppModel) renderTimer() string {
 
 func (m AppModel) Init() tea.Cmd {
 	go func() {
+
 		for {
+			if m.tableLeft == nil || m.tableRight == nil {
+				log.Infof("waiting...")
+				time.Sleep(time.Second * 1)
+				continue
+			}
+
 			select {
 			case evt := <-m.tableLeft.updateBlockFlagsCh:
 				evt.user = m.user
@@ -138,23 +142,25 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.timerProgress = progressModel.(progress.Model)
 		return m, cmd
 
-	case BlockFlags:
-		log.Debugf("update block %v", msg)
-		table := m.tableLeft
-		if msg.user == m.userRight {
-			table = m.tableRight
-		}
-		cell := &table.table[msg.row][msg.col]
-		cell.isHovered = msg.isHovered
-		cell.isSelected = msg.isSelected
-		return m, nil
+	// case BlockFlags:
+	// 	log.Debugf("update block %v", msg)
+	// 	table := m.tableLeft
+	// 	if msg.user == m.userRight {
+	// 		table = m.tableRight
+	// 	}
+	// 	cell := &table.table[msg.row][msg.col]
+	// 	cell.isHovered = msg.isHovered
+	// 	cell.isSelected = msg.isSelected
+	// 	return m, nil
 
 	case Join:
 		log.Infof("new user %s join %d", msg.user, msg.index)
 		if msg.index == 0 {
 			m.userLeft = msg.user
+			m.tableLeft = m.app.tableRepo.FindByPlayer(msg.user)
 		} else if msg.index == 1 {
 			m.userRight = msg.user
+			m.tableRight = m.app.tableRepo.FindByPlayer(msg.user)
 		}
 		return m, nil
 	case Score:
@@ -222,12 +228,20 @@ func (m AppModel) View() string {
 		},
 		{m.keymap.choose},
 	})
+	leftContent := "[empty]"
+	if m.tableLeft != nil {
+		leftContent = m.tableLeft.Render()
+	}
 	tableCell.SetContent(lipgloss.JoinVertical(
 		lipgloss.Top,
-		m.tableLeft.Render(),
+		leftContent,
 	))
 	tableCell = row1.GetCell(2)
-	tableCell.SetContent(m.tableRight.Render())
+	rightContent := "[empty]"
+	if m.tableRight != nil {
+		rightContent = m.tableRight.Render()
+	}
+	tableCell.SetContent(rightContent)
 
 	// help += fmt.Sprintf("\nuser left:  %s", m.userLeft)
 	// help += fmt.Sprintf("\nuser right: %s", m.userRight)
