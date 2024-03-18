@@ -27,6 +27,9 @@ func (it *RoomListItem) Description() string {
 }
 
 type RoomPage struct {
+	app  *App
+	user string
+
 	repo   RoomRepository
 	height int
 	width  int
@@ -78,21 +81,86 @@ func (p *RoomPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return p, tea.Quit
-		case "+":
-			room, err := p.repo.Create(rand.Intn(100))
-			if err == nil {
-				log.Infof("add new room: %d", room.id)
-			} else {
+		case "n":
+			var room *Room
+			for i := 0; i < 5; i++ {
+				var err error
+				room, err = p.repo.Create(rand.Intn(100))
+				if err == nil {
+					log.Infof("add new room: %d", room.id)
+					break
+				}
+
 				err = fmt.Errorf("failed to add room: %w", err)
 				log.Warn(err)
+				continue
 			}
-			cmd := p.refreshRooms()
-			cmds = append(cmds, cmd)
-			return p, tea.Batch(cmds...)
+
+			if room == nil {
+				// TODO: error handling
+				return p, nil
+			}
+
+			_, err := p.app.tableRepo.Create(p.user)
+			if err != nil {
+				log.Error(err)
+				return p, nil
+			}
+
+			gm := NewGameModel()
+			p.app.playerToRoom[p.user] = room
+			index := room.Join(p.user)
+
+			join := func() tea.Msg {
+				return Join{user: p.user, index: index}
+			}
+			gotoRoute := func() tea.Msg {
+				return GotoRoute{route: StaticRoute{Model: &gm}}
+			}
+			return p, tea.Sequence(gotoRoute, join)
 		case "r":
 			cmd := p.refreshRooms()
 			cmds = append(cmds, cmd)
 			return p, tea.Batch(cmds...)
+		case " ":
+			item, ok := p.rooms.SelectedItem().(*RoomListItem)
+			if !ok {
+				log.Info("no room selected")
+				return p, nil
+			}
+
+			_, err := p.app.tableRepo.Create(p.user)
+			if err != nil {
+				log.Error(err)
+				return p, nil
+			}
+
+			room := item.room
+			gm := NewGameModel()
+			p.app.playerToRoom[p.user] = room
+
+			cmds := make([]tea.Cmd, 0)
+			cmds = append(cmds, func() tea.Msg {
+				return GotoRoute{route: StaticRoute{Model: &gm}}
+			})
+
+			for i, player := range room.players {
+				cmds = append(cmds, func() tea.Msg {
+					return Join{user: player, index: i}
+				})
+			}
+
+			index := room.Join(p.user)
+			cmds = append(cmds, func() tea.Msg {
+				// TODO: dispatch to room through app
+				p.app.Send(p.user, Join{
+					user:  p.user,
+					index: index,
+				})
+				return nil
+			})
+
+			return p, tea.Sequence(cmds...)
 		}
 	}
 

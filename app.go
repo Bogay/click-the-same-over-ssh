@@ -101,43 +101,10 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 		wish.Fatalln(sess, "user has another session")
 	}
 
-	// m := NewRoomPage(30, 80, app.roomRepo)
-	// prog := tea.NewProgram(m, append(bubbletea.MakeOptions(sess), tea.WithAltScreen())...)
-
 	m := NewAppModel(user, app)
 
-	table, err := app.tableRepo.Create(user)
-	if err != nil {
-		wish.Fatalln(sess, err)
-		return nil
-	}
-
-	gm := NewGameModel()
-	gm.user = user
-
-	// add to room
-	if len(app.playerToRoom) == 0 {
-		room, _ := app.roomRepo.Create(0)
-		room.players = append(room.players, user)
-		app.playerToRoom[user] = room
-		gm.userLeft = user
-		gm.tableLeft = table
-	} else {
-		for _, r := range app.playerToRoom {
-			for _, p := range r.players {
-				app.progs[p].Send(Join{user: user, index: 1})
-				gm.userLeft = p
-				gm.tableLeft = app.tableRepo.FindByPlayer(p)
-				break
-			}
-			r.players = append(r.players, user)
-			app.playerToRoom[user] = r
-			gm.userRight = user
-			gm.tableRight = table
-			break
-		}
-	}
-
+	// route to room page
+	gm := NewRoomPage(30, 80, app.roomRepo)
 	m.router.Goto(StaticRoute{Model: gm})
 
 	// listen to connection close
@@ -148,10 +115,11 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 		// release user resource
 		delete(app.progs, user)
 
-		r := app.playerToRoom[user]
-		r.RemovePlayer(user)
-		if len(r.players) == 0 {
-			app.roomRepo.Remove(r.id)
+		if r, exists := app.playerToRoom[user]; exists {
+			r.RemovePlayer(user)
+			if len(r.players) == 0 {
+				app.roomRepo.Remove(r.id)
+			}
 		}
 
 		delete(app.playerToRoom, user)

@@ -26,6 +26,11 @@ func (r *Room) RemovePlayer(player string) error {
 	return nil
 }
 
+func (r *Room) Join(player string) int {
+	r.players = append(r.players, player)
+	return len(r.players) - 1
+}
+
 type RoomRepository interface {
 	Create(id int) (*Room, error)
 	Find(id int) *Room

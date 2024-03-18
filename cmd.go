@@ -26,3 +26,7 @@ type Score struct {
 	user  string
 	delta int
 }
+
+type GotoRoute struct {
+	route Route
+}

@@ -49,11 +49,11 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func (m GameModel) Init() tea.Cmd {
+func (m *GameModel) Init() tea.Cmd {
 	go func() {
 		for {
 			if m.tableLeft == nil || m.tableRight == nil {
-				log.Infof("waiting...")
+				log.Infof("player %s waiting...", m.user)
 				time.Sleep(time.Second * 1)
 				continue
 			}
@@ -74,7 +74,7 @@ func (m GameModel) Init() tea.Cmd {
 	return tea.Batch(tickCmd(), m.timer.Init())
 }
 
-func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.flexBox.SetHeight(msg.Height)
@@ -165,7 +165,7 @@ func (m *GameModel) renderTimer() string {
 	return fmt.Sprintf("%s %.2fs", prog, time)
 }
 
-func (m GameModel) View() string {
+func (m *GameModel) View() string {
 	m.flexBox.ForceRecalculate()
 	row0 := m.flexBox.GetRow(0)
 	headerCell := row0.GetCell(0)
@@ -252,8 +252,12 @@ func (ar *AppRouter) Goto(r Route) error {
 
 	// TODO: DI
 	switch m := m.(type) {
-	case GameModel:
-		log.Infof("Inject app / user %s", ar.user)
+	case *GameModel:
+		m.app = ar.app
+		m.user = ar.user
+		ar.model = m
+		return nil
+	case *RoomPage:
 		m.app = ar.app
 		m.user = ar.user
 		ar.model = m
@@ -272,6 +276,12 @@ func (ar *AppRouter) Init() tea.Cmd {
 }
 
 func (ar *AppRouter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case GotoRoute:
+		ar.Goto(msg.route)
+		return ar, ar.model.Init()
+	}
+
 	var cmd tea.Cmd
 	ar.model, cmd = ar.model.Update(msg)
 	return ar, cmd
@@ -358,9 +368,12 @@ func (m AppModel) Init() tea.Cmd {
 }
 
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmds := make([]tea.Cmd, 0)
+
 	rm, cmd := m.router.Update(msg)
+	cmds = append(cmds, cmd)
 	m.router = rm.(Router)
-	return m, cmd
+	return m, tea.Batch(cmds...)
 }
 
 func (m AppModel) View() string {
