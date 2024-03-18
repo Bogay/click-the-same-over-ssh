@@ -295,6 +295,8 @@ type AppModel struct {
 	user   string
 	app    *App
 	router Router
+	height int
+	width  int
 }
 
 func NewGameModel() GameModel {
@@ -369,6 +371,19 @@ func (m AppModel) Init() tea.Cmd {
 
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds := make([]tea.Cmd, 0)
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
+		m.width = msg.Width
+	case GotoRoute:
+		rm, cmd := m.router.Update(msg)
+		m.router = rm.(Router)
+		resizeChild := func() tea.Msg {
+			return tea.WindowSizeMsg{Height: m.height, Width: m.width}
+		}
+		return m, tea.Sequence([]tea.Cmd{cmd, resizeChild}...)
+	}
 
 	rm, cmd := m.router.Update(msg)
 	cmds = append(cmds, cmd)
