@@ -23,9 +23,10 @@ type keymap struct {
 	choose key.Binding
 }
 
-type AppModel struct {
-	user    string
-	app     *App
+type GameModel struct {
+	user string
+	app  *App
+
 	flexBox *flexbox.FlexBox
 
 	userLeft   string
@@ -40,63 +41,16 @@ type AppModel struct {
 	help   help.Model
 }
 
-func NewAppModel(keymap keymap) AppModel {
-	m := AppModel{
-		flexBox:       flexbox.New(0, 0),
-		timer:         timer.NewWithInterval(gameDuration, time.Millisecond),
-		timerProgress: progress.New(progress.WithDefaultGradient(), progress.WithoutPercentage()),
-		keymap:        keymap,
-		help:          help.New(),
-	}
+type tickMsg time.Time
 
-	flexRows := make([]*flexbox.Row, 0)
-	styleScoreHeader := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
-	row0 := m.flexBox.NewRow().AddCells(
-		flexbox.NewCell(30, 1).SetStyle(styleScoreHeader),
-	)
-	flexRows = append(flexRows, row0)
-
-	styleMathTable := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
-	row1 := m.flexBox.NewRow().AddCells(
-		flexbox.NewCell(4, 6).SetStyle(styleMathTable),
-		flexbox.NewCell(2, 6).SetStyle(styleMathTable),
-		flexbox.NewCell(4, 6).SetStyle(styleMathTable),
-	)
-	flexRows = append(flexRows, row1)
-
-	styleBottomRow := lipgloss.NewStyle().Padding(1).AlignVertical(lipgloss.Bottom)
-	row2 := m.flexBox.NewRow().SetStyle(styleBottomRow).AddCells(
-		flexbox.NewCell(30, 2),
-	)
-	flexRows = append(flexRows, row2)
-
-	m.flexBox.AddRows(flexRows)
-
-	return m
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Millisecond*500, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
 }
 
-func genTable() [][]ArithmeticBlock {
-	mathRows := make([][]ArithmeticBlock, 0)
-	for i := 0; i < 4; i++ {
-		r := make([]ArithmeticBlock, 0)
-		for j := 0; j < 3; j++ {
-			r = append(r, NewArithmeticBlock(1+rand.Intn(13)))
-		}
-		mathRows = append(mathRows, r)
-	}
-	return mathRows
-}
-
-func (t *AppModel) renderTimer() string {
-	prog := t.timerProgress.View()
-	time := t.timer.Timeout.Seconds()
-
-	return fmt.Sprintf("%s %.2fs", prog, time)
-}
-
-func (m AppModel) Init() tea.Cmd {
+func (m GameModel) Init() tea.Cmd {
 	go func() {
-
 		for {
 			if m.tableLeft == nil || m.tableRight == nil {
 				log.Infof("waiting...")
@@ -120,15 +74,7 @@ func (m AppModel) Init() tea.Cmd {
 	return tea.Batch(tickCmd(), m.timer.Init())
 }
 
-type tickMsg time.Time
-
-func tickCmd() tea.Cmd {
-	return tea.Tick(time.Millisecond*500, func(t time.Time) tea.Msg {
-		return tickMsg(t)
-	})
-}
-
-func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.flexBox.SetHeight(msg.Height)
@@ -191,6 +137,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			table = m.tableRight
 		}
 
+		// TODO: ignore if game has not started
 		switch {
 		case key.Matches(msg, m.keymap.up):
 			table.CursorUp()
@@ -211,7 +158,14 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m AppModel) View() string {
+func (m *GameModel) renderTimer() string {
+	prog := m.timerProgress.View()
+	time := m.timer.Timeout.Seconds()
+
+	return fmt.Sprintf("%s %.2fs", prog, time)
+}
+
+func (m GameModel) View() string {
 	m.flexBox.ForceRecalculate()
 	row0 := m.flexBox.GetRow(0)
 	headerCell := row0.GetCell(0)
@@ -243,10 +197,172 @@ func (m AppModel) View() string {
 	}
 	tableCell.SetContent(rightContent)
 
-	// help += fmt.Sprintf("\nuser left:  %s", m.userLeft)
-	// help += fmt.Sprintf("\nuser right: %s", m.userRight)
+	// // debug
+	// userLeft := fmt.Sprintf("user left:  %s", m.userLeft)
+	// userRight := fmt.Sprintf("user right: %s", m.userRight)
+
+	// if m.user == userLeft {
+	// 	userLeft = styleBlockSelected.Render(userLeft)
+	// }
+	// if m.user == userRight {
+	// 	userRight = styleBlockSelected.Render(userRight)
+	// }
+
+	// help += "\n"
+	// help += fmt.Sprintf("user: %s", m.user)
+	// help += "\n"
+	// help += userLeft
+	// help += "\n"
+	// help += userRight
 
 	m.flexBox.GetRow(2).GetCell(0).SetContent(help)
 
 	return m.flexBox.Render()
+}
+
+type Route interface {
+	GetModel() tea.Model
+}
+
+type StaticRoute struct {
+	tea.Model
+}
+
+func (r StaticRoute) GetModel() tea.Model {
+	return r.Model
+}
+
+type Router interface {
+	tea.Model
+
+	Goto(Route) error
+	View() string
+}
+
+type AppRouter struct {
+	app   *App
+	user  string
+	route Route
+	model tea.Model
+}
+
+func (ar *AppRouter) Goto(r Route) error {
+	ar.route = r
+	m := r.GetModel()
+
+	// TODO: DI
+	switch m := m.(type) {
+	case GameModel:
+		log.Infof("Inject app / user %s", ar.user)
+		m.app = ar.app
+		m.user = ar.user
+		ar.model = m
+		return nil
+	default:
+		ar.model = m
+		return nil
+	}
+}
+
+func (ar *AppRouter) Init() tea.Cmd {
+	if ar.model != nil {
+		return ar.model.Init()
+	}
+	return nil
+}
+
+func (ar *AppRouter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	ar.model, cmd = ar.model.Update(msg)
+	return ar, cmd
+}
+
+func (ar *AppRouter) View() string {
+	return ar.model.View()
+}
+
+type AppModel struct {
+	user   string
+	app    *App
+	router Router
+}
+
+func NewGameModel() GameModel {
+	keymap := keymap{
+		up:     key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up")),
+		down:   key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down")),
+		left:   key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "left")),
+		right:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "right")),
+		choose: key.NewBinding(key.WithKeys(tea.KeySpace.String()), key.WithHelp("space", "(un)select")),
+	}
+
+	m := GameModel{
+		flexBox:       flexbox.New(0, 0),
+		timer:         timer.NewWithInterval(gameDuration, time.Millisecond),
+		timerProgress: progress.New(progress.WithDefaultGradient(), progress.WithoutPercentage()),
+		keymap:        keymap,
+		help:          help.New(),
+	}
+
+	flexRows := make([]*flexbox.Row, 0)
+	styleScoreHeader := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
+	row0 := m.flexBox.NewRow().AddCells(
+		flexbox.NewCell(30, 1).SetStyle(styleScoreHeader),
+	)
+	flexRows = append(flexRows, row0)
+
+	styleMathTable := lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
+	row1 := m.flexBox.NewRow().AddCells(
+		flexbox.NewCell(4, 6).SetStyle(styleMathTable),
+		flexbox.NewCell(2, 6).SetStyle(styleMathTable),
+		flexbox.NewCell(4, 6).SetStyle(styleMathTable),
+	)
+	flexRows = append(flexRows, row1)
+
+	styleBottomRow := lipgloss.NewStyle().Padding(1).AlignVertical(lipgloss.Bottom)
+	row2 := m.flexBox.NewRow().SetStyle(styleBottomRow).AddCells(
+		flexbox.NewCell(30, 2),
+	)
+	flexRows = append(flexRows, row2)
+
+	m.flexBox.AddRows(flexRows)
+
+	return m
+}
+
+func NewAppModel(user string, app *App) AppModel {
+	return AppModel{
+		user: user,
+		app:  app,
+		router: &AppRouter{
+			user: user,
+			app:  app,
+		},
+	}
+}
+
+func genTable() [][]ArithmeticBlock {
+	mathRows := make([][]ArithmeticBlock, 0)
+	for i := 0; i < 4; i++ {
+		r := make([]ArithmeticBlock, 0)
+		for j := 0; j < 3; j++ {
+			r = append(r, NewArithmeticBlock(1+rand.Intn(13)))
+		}
+		mathRows = append(mathRows, r)
+	}
+	return mathRows
+}
+
+func (m AppModel) Init() tea.Cmd {
+	return m.router.Init()
+}
+
+func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	rm, cmd := m.router.Update(msg)
+	m.router = rm.(Router)
+	return m, cmd
+}
+
+func (m AppModel) View() string {
+	return m.router.View()
 }

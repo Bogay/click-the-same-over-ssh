@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/log"
 	"github.com/charmbracelet/ssh"
@@ -78,7 +77,6 @@ func (app *App) Start() {
 	}
 }
 
-// TODO: auth?
 func (app *App) Send(player string, msg tea.Msg) {
 	if room, exists := app.playerToRoom[player]; exists {
 		for _, p := range room.players {
@@ -106,15 +104,7 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 	// m := NewRoomPage(30, 80, app.roomRepo)
 	// prog := tea.NewProgram(m, append(bubbletea.MakeOptions(sess), tea.WithAltScreen())...)
 
-	m := NewAppModel(keymap{
-		up:     key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up")),
-		down:   key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down")),
-		left:   key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "left")),
-		right:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "right")),
-		choose: key.NewBinding(key.WithKeys(tea.KeySpace.String()), key.WithHelp("space", "(un)select")),
-	})
-	m.user = user
-	m.app = app
+	m := NewAppModel(user, app)
 
 	table, err := app.tableRepo.Create(user)
 	if err != nil {
@@ -122,28 +112,33 @@ func (app *App) ProgramHandler(sess ssh.Session) *tea.Program {
 		return nil
 	}
 
+	gm := NewGameModel()
+	gm.user = user
+
 	// add to room
 	if len(app.playerToRoom) == 0 {
 		room, _ := app.roomRepo.Create(0)
 		room.players = append(room.players, user)
 		app.playerToRoom[user] = room
-		m.userLeft = user
-		m.tableLeft = table
+		gm.userLeft = user
+		gm.tableLeft = table
 	} else {
 		for _, r := range app.playerToRoom {
 			for _, p := range r.players {
 				app.progs[p].Send(Join{user: user, index: 1})
-				m.userLeft = p
-				m.tableLeft = app.tableRepo.FindByPlayer(p)
+				gm.userLeft = p
+				gm.tableLeft = app.tableRepo.FindByPlayer(p)
 				break
 			}
 			r.players = append(r.players, user)
 			app.playerToRoom[user] = r
-			m.userRight = user
-			m.tableRight = table
+			gm.userRight = user
+			gm.tableRight = table
 			break
 		}
 	}
+
+	m.router.Goto(StaticRoute{Model: gm})
 
 	// listen to connection close
 	go func() {
